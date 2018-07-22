@@ -7,17 +7,19 @@ import numpy as np
 from datetime import datetime
 from matplotlib import pyplot as PLT
 import time
+import csv
 
 FRAME_SIZE=210*160*1
 INPUT_DIM=2*FRAME_SIZE
-POPULATION_SIZE = 100
-L1=200
+POPULATION_SIZE = 6
+L1=10
 L2=4
 ELITE_SET_SIZE = 5
 MUTATION_RATE = 0.05
 
 env = gym.make('SpaceInvaders-v0')
 keepTraining = True
+slack_logs = np.zeros((5,1))
 
 def visualize(featureVector):
     regularImage = featureVector[0,:FRAME_SIZE].reshape((210,160))
@@ -26,6 +28,20 @@ def visualize(featureVector):
     PLT.show()
     PLT.imshow(differenceImage)
     PLT.show()
+
+def writeCsv(index, data):
+    slack_logs[index] = data
+
+    # For slack_logs:
+    # [0] Generation
+    # [1] Highest Score
+    # [2] Current Score
+    # [3] Games Played
+    # [4] Start Time
+    #
+    with open("logs.csv", "w", newline='') as csv_file:
+        writer = csv.writer(csv_file, delimiter=',')
+        writer.writerows(slack_logs)
 
 def calculatePolicySize():
     return INPUT_DIM*L1+L1+L1*L2+L2
@@ -73,18 +89,23 @@ def playGame(model):
         prediction = model.predict(final_obervation)
         action = convert_prediction_to_action(prediction)
         score+=reward
+
+        writeCsv(2, score)
+
         previous_frame = np.copy(frame)
 
     # print("Score:",score)
     return score
 
 # This is where the weights are put into the neural net to see how well it goes
-def evaluate(dnnmodel, population):
+def evaluate(dnnmodel, population, gamesPlayed):
     scores=np.zeros(POPULATION_SIZE)
     for i in range(POPULATION_SIZE):
         nnFormatPolicyVector = applyPolicyVectorToNN(population[i])
         dnnmodel.set_weights(nnFormatPolicyVector)
         scores[i] = playGame(dnnmodel)
+        gamesPlayed+=1
+        writeCsv(3, gamesPlayed)
     return scores
 
 
@@ -160,11 +181,10 @@ def generateNewGeneration(scores, population):
     return mutationPopulation
 
 def saveHighestScorePolicy(population, generation, scores):
-    if(generation%5==0):
-        index = np.argmax(scores)
-        filename='generation'+str(generation)+'HS'+str(scores[index])+'.npy'
-        np.save(filename,population[index])
-        print("Saved generation to file "+filename)
+    index = np.argmax(scores)
+    filename='generation'+str(generation)+'HS'+str(scores[index])+'.npy'
+    np.save(filename,population[index])
+    print("Saved generation to file "+filename)
 
 def loadPolicy(filename, population, index):
     policy=np.load(filename)
@@ -183,10 +203,17 @@ population = initPopulation()
 # loadPolicy('generation0.npy',population,0)
 dnnmodel = buildModel()
 generation = 0
-lasttime=time.time()
+lasttime = time.time()
+
+writeCsv(4, time.time())
+
 while (keepTraining):
-    scores = evaluate(dnnmodel, population)
-    print(measureTime()," sec Generation: ", generation, " Highest Score: ", np.max(scores), ' Games Played: ', generation*POPULATION_SIZE)
+    scores = evaluate(dnnmodel, population, generation*POPULATION_SIZE)
+    print(measureTime()," sec Generation: ", generation, " Highest Score: ", np.max(scores), " Games Played: ", generation*POPULATION_SIZE)
+
+    writeCsv(0, generation)
+    writeCsv(1, np.max(scores))
+
     saveHighestScorePolicy(population,generation, scores)
     population = generateNewGeneration(scores, population)
     print(measureTime()," sec New generation created.")
