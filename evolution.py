@@ -8,6 +8,7 @@ from datetime import datetime
 from matplotlib import pyplot as PLT
 import time
 import csv
+import os
 
 FRAME_SIZE=210*160*1
 INPUT_DIM=2*FRAME_SIZE
@@ -207,7 +208,7 @@ def generateNewGeneration(scores, population):
 def saveHighestScorePolicy(population, generation, scores):
     if (generation % 10 == 0):
         index = np.argmax(scores)
-        filename='generation'+str(generation)+'HS'+str(scores[index])+'.npy'
+        filename='/SavedScores/generation'+str(generation)+'HS'+str(scores[index])+'.npy'
         np.save(filename,population[index])
         print("Saved generation to file "+filename)
 
