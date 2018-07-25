@@ -11,9 +11,10 @@ import csv
 
 FRAME_SIZE=210*160*1
 INPUT_DIM=2*FRAME_SIZE
-POPULATION_SIZE = 50
-L1=200
-L2=4
+POPULATION_SIZE = 6
+L1=10
+L2=2
+L3=4
 ELITE_SET_SIZE = 5
 MUTATION_RATE = 0.05
 
@@ -44,7 +45,7 @@ def writeCsv(index, data):
         writer.writerows(slack_logs)
 
 def calculatePolicySize():
-    return INPUT_DIM*L1+L1+L1*L2+L2
+    return INPUT_DIM*L1+L1+L1*L2+L2+L2*L3+L3
 
 # This function is called each time a new memeber of the population is created
 def initPopulation():
@@ -114,46 +115,60 @@ def buildModel():
     model = Sequential()
     layer1=Dense(L1, activation = 'relu', input_dim = INPUT_DIM, kernel_initializer='uniform')
     model.add(layer1)
-    layer2=Dense(L2, activation ='softmax', kernel_initializer='uniform')
+    layer2=Dense(L2, activation = 'relu', kernel_initializer='uniform')
     model.add(layer2)
+    layer3=Dense(L3, activation ='softmax', kernel_initializer='uniform')
+    model.add(layer3)
     adam = Adam(lr=0.01)
     model.compile(loss='mean_squared_error', optimizer=adam)
     return model
 
 def applyPolicyVectorToNN(policyVector):
-    sec1 = (policyVector[:INPUT_DIM*L1]).reshape(INPUT_DIM,L1)
-    sec2 = policyVector[INPUT_DIM*L1:INPUT_DIM*L1+L1]
-    sec3 = policyVector[INPUT_DIM*L1+L1:INPUT_DIM*L1+L1+L1*L2].reshape(L1,L2)
-    sec4 = policyVector[INPUT_DIM*L1+L1+L1*L2:]
+    offset=INPUT_DIM*L1
+    print("policyvector.shape",policyVector.shape)
+    sec1 = (policyVector[:offset]).reshape(INPUT_DIM,L1)
+    sec2 = policyVector[offset:offset+L1]
+    offset+=L1
+    sec3 = policyVector[offset:offset+L1*L2].reshape(L1,L2)
+    offset+=L1*L2
+    sec4 = policyVector[offset:offset+L2]
+    offset+=L2
+    sec5 = policyVector[offset:offset+L2*L3].reshape(L2,L3)
+    offset+=L2*L3
+    sec6 = policyVector[offset:]
 
     nnFormat = []
     nnFormat.append(sec1)
     nnFormat.append(sec2)
     nnFormat.append(sec3)
     nnFormat.append(sec4)
+    nnFormat.append(sec5)
+    nnFormat.append(sec6)
     return nnFormat
 
 # This is where the members of the population are ranked
 def selection(scores, population):
-    eliteSet = []
+    eliteSet = np.zeros(ELITE_SET_SIZE)
     scoresTemp=np.copy(scores)
     for _ in range(ELITE_SET_SIZE):
         index = np.argmax(scoresTemp)
         scoresTemp[index] = 0
-        eliteSet.append(population[index])
+        np.append(eliteSet, population[index])
     return eliteSet
 
 def cross(policy1, policy2):
     newPolicy = policy1.copy()
-    for i in range(calculatePolicySize()):
-        rand = np.random.uniform()
-        if rand > 0.5:
-            newPolicy[i] = policy2[i]
+    mask = np.random.randint(2, size=newPolicy.shape).astype(np.bool)
+    newPolicy[mask] = policy2[mask]
+    # for i in range(calculatePolicySize()):
+    #     rand = np.random.uniform()
+    #     if rand > 0.5:
+    #         newPolicy[i] = policy2[i]
     return newPolicy
 
 # This is where crossover occurs based on the selection process
 def crossover(scores, population):
-    crossoverSet = []
+    crossoverSet = np.zeros(POPULATION_SIZE - ELITE_SET_SIZE)
     selectionProbability = np.array(scores)/np.sum(scores)
     for i in range(POPULATION_SIZE - ELITE_SET_SIZE):
         randomIndex = np.random.choice(range(POPULATION_SIZE), p=selectionProbability)
@@ -161,30 +176,40 @@ def crossover(scores, population):
         randomIndex = np.random.choice(range(POPULATION_SIZE), p=selectionProbability)
         policy2 = population[randomIndex]
         newPolicy = cross(policy1, policy2)
-        crossoverSet.append(newPolicy)
+        np.append(crossoverSet, newPolicy)
     return crossoverSet
 
 # Lastly, the mutation is a point mutation that sometimes occurs
 def mutation(crossoverPopulation):
-    for i in range(POPULATION_SIZE - ELITE_SET_SIZE):
-        for j in range(calculatePolicySize()):
-            rand = np.random.uniform()
-            if(rand < MUTATION_RATE):
-                crossoverPopulation[i][j] = np.random.random_sample() * 2 - 1
+    i = int((POPULATION_SIZE - ELITE_SET_SIZE) * np.random.random_sample())
+    j = int(calculatePolicySize() * np.random.random_sample())
+
+    for _ in range(int(i*j*MUTATION_RATE)):
+        crossoverPopulation[i][j] = np.random.random_sample() * 2 - 1
+    # for i in range(POPULATION_SIZE - ELITE_SET_SIZE):
+    #     for j in range(calculatePolicySize()):
+    #         rand = np.random.uniform()
+    #         if(rand < MUTATION_RATE):
+    #             crossoverPopulation[i][j] = np.random.random_sample() * 2 - 1
     return crossoverPopulation
 
 def generateNewGeneration(scores, population):
     elitePopulation = selection(scores, population)
     crossoverPopulation = crossover(scores, population)
     mutationPopulation = mutation(crossoverPopulation)
-    mutationPopulation.extend(elitePopulation)
+    print(mutationPopulation.shape)
+
+    np.append(mutationPopulation, elitePopulation)
+    # mutationPopulation.extend(elitePopulation)
+    print(mutationPopulation.shape)
     return mutationPopulation
 
 def saveHighestScorePolicy(population, generation, scores):
-    index = np.argmax(scores)
-    filename='generation'+str(generation)+'HS'+str(scores[index])+'.npy'
-    np.save(filename,population[index])
-    print("Saved generation to file "+filename)
+    if (generation % 10 == 0):
+        index = np.argmax(scores)
+        filename='generation'+str(generation)+'HS'+str(scores[index])+'.npy'
+        np.save(filename,population[index])
+        print("Saved generation to file "+filename)
 
 def loadPolicy(filename, population, index):
     policy=np.load(filename)
@@ -209,12 +234,12 @@ writeCsv(4, time.time())
 
 while (keepTraining):
     scores = evaluate(dnnmodel, population, generation*POPULATION_SIZE)
-    print(measureTime()," sec Generation: ", generation, " Highest Score: ", np.max(scores), " Games Played: ", generation*POPULATION_SIZE)
+    print(int(measureTime())," sec Generation: ", generation, " Highest Score: ", np.max(scores), " Games Played: ", generation*POPULATION_SIZE)
 
     writeCsv(0, generation)
     writeCsv(1, np.max(scores))
 
-    saveHighestScorePolicy(population,generation, scores)
+    saveHighestScorePolicy(population, generation, scores)
     population = generateNewGeneration(scores, population)
-    print(measureTime()," sec New generation created.")
+    print(int(measureTime())," sec New generation created.")
     generation+=1
