@@ -9,7 +9,7 @@ import csv
 # export SLACK_BOT_TOKEN='your bot user access token here'
 # slack_client = SlackClient(os.environ.get('SLACK_BOT_TOKEN'))
 
-slack_client = SlackClient('xoxb-397785387536-402566650723-MKUz9KcecNGBx7jqP8M3vSSt')
+slack_client = SlackClient('ENTER')
 
 ai_bot_id = None
 
