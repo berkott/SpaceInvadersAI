@@ -61,7 +61,7 @@ def handle_command(command, channel, slack_logs):
     slack_client.api_call(
         "chat.postMessage",
         channel=channel,
-        text=response or default_response
+        text=response
     )
 
 def reconnectLoop(slack_client, channel, connectionLostTime):

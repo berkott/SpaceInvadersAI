@@ -1,7 +1,7 @@
 import gym
 import keras as k
 from keras.models import Sequential
-from keras.layers import Dense, Activation
+from keras.layers import Conv2D, Activation, MaxPooling2D, Flatten, Dense, Dropout
 from keras.optimizers import Adam
 import numpy as np
 from datetime import datetime
@@ -10,14 +10,28 @@ import time
 import csv
 import os
 
-FRAME_SIZE=210*160*1
-INPUT_DIM=2*FRAME_SIZE
-POPULATION_SIZE = 6
-L1=10
-L2=2
-L3=4
+# You can adjust these hyperparameters
+POPULATION_SIZE = 50
+L1=20
+L2=10
+L3=50
+L4=4
+# L1=2
+# L2=3
+# L3=4
+# L4=5
+POOLING_SIZE = (2,2)
+FILTER_SIZE_1 = (3,3)
+FILTER_SIZE_2 = (5,5)
 ELITE_SET_SIZE = 5
-MUTATION_RATE = 0.05
+MUTATION_RATE = 0.5
+
+FRAME_SIZE = 210*160*1
+INPUT_DIM = 2*FRAME_SIZE
+INPUT_SHAPE = (210, 160, 2)
+FINAL_DIMENSION_X = int(((INPUT_SHAPE[0] - 2*int(FILTER_SIZE_1[0]/2))/2 - 2*int(FILTER_SIZE_2[0]/2))/2)
+FINAL_DIMENSION_Y = int(((INPUT_SHAPE[1] - 2*int(FILTER_SIZE_1[0]/2))/2 - 2*int(FILTER_SIZE_2[0]/2))/2)
+
 
 env = gym.make('SpaceInvaders-v0')
 keepTraining = True
@@ -46,7 +60,12 @@ def writeCsv(index, data):
         writer.writerows(slack_logs)
 
 def calculatePolicySize():
-    return INPUT_DIM*L1+L1+L1*L2+L2+L2*L3+L3
+    # INPUT_DIM * L1+L1+L1 * L2+L2+L2 * L3+L3+L3 * L4+L4
+    # FILTER_SIZE_1[0] * FILTER_SIZE_1[1] * INPUT_SHAPE[2] * L1 + L1 + 
+    # FILTER_SIZE_1[0] * FILTER_SIZE_1[1] * L1 * L2 + L2 + 
+    # final_dimension_x*final_dimension_y*L2*L3 + L3 + 
+    # L3*L4
+    return FILTER_SIZE_1[0] * FILTER_SIZE_1[1] * INPUT_SHAPE[2] * L1 + L1 + FILTER_SIZE_1[0] * FILTER_SIZE_1[1] * L1 * L2 + L2 + FINAL_DIMENSION_X*FINAL_DIMENSION_Y*L2*L3 + L3 + L3 * L4 + L4
 
 # This function is called each time a new memeber of the population is created
 def initPopulation():
@@ -76,19 +95,23 @@ def playGame(model):
     action=0
     frame = np.zeros((1,FRAME_SIZE))
     previous_frame = np.zeros((1,FRAME_SIZE))
-    final_obervation=np.zeros((1,INPUT_DIM))
     env.reset()
     framenumber=0
+    observation_dim = list(INPUT_SHAPE)
+    observation_dim.insert(0,1)
+    observation_dim = tuple(observation_dim)
     while not done:
         framenumber+=1
         env.render()
-        observation, reward, done, info = env.step(action)
+        observation, reward, done, _ = env.step(action)
         frame = np.reshape(observation[:,:,0],(1,FRAME_SIZE))
         frame = np.where(frame > 0, 1.0,0)
         difference = frame-previous_frame
-        final_obervation[0,:FRAME_SIZE]=frame
-        final_obervation[0,FRAME_SIZE:]=difference
-        prediction = model.predict(final_obervation)
+        final_observation=np.zeros((1,INPUT_DIM))
+        final_observation[0,:FRAME_SIZE]=frame
+        final_observation[0,FRAME_SIZE:]=difference
+        final_observation = np.reshape(final_observation, observation_dim)
+        prediction = model.predict(final_observation)
         action = convert_prediction_to_action(prediction)
         score+=reward
 
@@ -114,29 +137,53 @@ def evaluate(dnnmodel, population, gamesPlayed):
 # Constructs the model that is to be used
 def buildModel():
     model = Sequential()
-    layer1=Dense(L1, activation = 'relu', input_dim = INPUT_DIM, kernel_initializer='uniform')
+    # layer1=Dense(L1, activation = 'relu', input_dim = INPUT_DIM, kernel_initializer='uniform')
+    layer1=Conv2D(L1, FILTER_SIZE_1, activation='relu', input_shape = INPUT_SHAPE, kernel_initializer='uniform')
     model.add(layer1)
-    layer2=Dense(L2, activation = 'relu', kernel_initializer='uniform')
+    model.add(MaxPooling2D(pool_size=POOLING_SIZE))
+    
+    layer2=Conv2D(L2, FILTER_SIZE_2, activation='relu', kernel_initializer='uniform')
     model.add(layer2)
-    layer3=Dense(L3, activation ='softmax', kernel_initializer='uniform')
+    model.add(MaxPooling2D(pool_size=POOLING_SIZE))
+
+    # model.add(Dropout(0.25))
+    model.add(Flatten())
+
+    layer3=Dense(L3, activation = 'relu', kernel_initializer='uniform')
     model.add(layer3)
+
+    layer4=Dense(L4, activation ='softmax', kernel_initializer='uniform')
+    model.add(layer4)
+
     adam = Adam(lr=0.01)
     model.compile(loss='mean_squared_error', optimizer=adam)
+    weights=model.get_weights()
+    print(len(weights))
+    print("====================================")
     return model
 
 def applyPolicyVectorToNN(policyVector):
-    offset=INPUT_DIM*L1
-    print("policyvector.shape",policyVector.shape)
-    sec1 = (policyVector[:offset]).reshape(INPUT_DIM,L1)
+    # INPUT_DIM * L1+L1+L1 * L2+L2+L2 * L3+L3+L3 * L4+L4
+    # FILTER_SIZE_1[0] * FILTER_SIZE_1[1] * INPUT_SHAPE[2] * L1 + L1 + 
+    # FILTER_SIZE_1[0] * FILTER_SIZE_1[1] * L1 * L2 + L2 + 
+    # final_dimension_x*final_dimension_y*L2*L3 + L3 + 
+    # L3*L4
+
+    offset=FILTER_SIZE_1[0] * FILTER_SIZE_1[1] * INPUT_SHAPE[2] * L1
+    sec1 = policyVector[:offset].reshape(FILTER_SIZE_1[0], FILTER_SIZE_1[1], INPUT_SHAPE[2], L1)
     sec2 = policyVector[offset:offset+L1]
     offset+=L1
-    sec3 = policyVector[offset:offset+L1*L2].reshape(L1,L2)
-    offset+=L1*L2
+    sec3 = policyVector[offset:offset+FILTER_SIZE_2[0] * FILTER_SIZE_2[1] * L1 * L2].reshape(FILTER_SIZE_2[0], FILTER_SIZE_2[1], L1, L2)
+    offset+=FILTER_SIZE_1[0] * FILTER_SIZE_1[1] * L1 * L2
     sec4 = policyVector[offset:offset+L2]
     offset+=L2
-    sec5 = policyVector[offset:offset+L2*L3].reshape(L2,L3)
-    offset+=L2*L3
-    sec6 = policyVector[offset:]
+    sec5 = policyVector[offset:offset+FINAL_DIMENSION_X*FINAL_DIMENSION_Y*L2*L3].reshape(FINAL_DIMENSION_X*FINAL_DIMENSION_Y*L2, L3)
+    offset+=FINAL_DIMENSION_X*FINAL_DIMENSION_Y*L2*L3
+    sec6 = policyVector[offset:offset+L3]
+    offset+=L3
+    sec7 = policyVector[offset:offset+L3*L4].reshape(L3, L4)
+    offset+=L3*L4
+    sec8 = policyVector[offset:]
 
     nnFormat = []
     nnFormat.append(sec1)
@@ -145,16 +192,18 @@ def applyPolicyVectorToNN(policyVector):
     nnFormat.append(sec4)
     nnFormat.append(sec5)
     nnFormat.append(sec6)
+    nnFormat.append(sec7)
+    nnFormat.append(sec8)
     return nnFormat
 
 # This is where the members of the population are ranked
 def selection(scores, population):
-    eliteSet = np.zeros(ELITE_SET_SIZE)
+    eliteSet = np.zeros((ELITE_SET_SIZE,calculatePolicySize()))
     scoresTemp=np.copy(scores)
-    for _ in range(ELITE_SET_SIZE):
+    for i in range(ELITE_SET_SIZE):
         index = np.argmax(scoresTemp)
         scoresTemp[index] = 0
-        np.append(eliteSet, population[index])
+        eliteSet[i] = population[index]
     return eliteSet
 
 def cross(policy1, policy2):
@@ -169,7 +218,7 @@ def cross(policy1, policy2):
 
 # This is where crossover occurs based on the selection process
 def crossover(scores, population):
-    crossoverSet = np.zeros(POPULATION_SIZE - ELITE_SET_SIZE)
+    crossoverSet = np.zeros((POPULATION_SIZE,calculatePolicySize()))
     selectionProbability = np.array(scores)/np.sum(scores)
     for i in range(POPULATION_SIZE - ELITE_SET_SIZE):
         randomIndex = np.random.choice(range(POPULATION_SIZE), p=selectionProbability)
@@ -177,7 +226,7 @@ def crossover(scores, population):
         randomIndex = np.random.choice(range(POPULATION_SIZE), p=selectionProbability)
         policy2 = population[randomIndex]
         newPolicy = cross(policy1, policy2)
-        np.append(crossoverSet, newPolicy)
+        crossoverSet[i]=newPolicy
     return crossoverSet
 
 # Lastly, the mutation is a point mutation that sometimes occurs
@@ -198,18 +247,17 @@ def generateNewGeneration(scores, population):
     elitePopulation = selection(scores, population)
     crossoverPopulation = crossover(scores, population)
     mutationPopulation = mutation(crossoverPopulation)
-    print(mutationPopulation.shape)
+        
+    for i in range(ELITE_SET_SIZE):
+        mutationPopulation[POPULATION_SIZE-ELITE_SET_SIZE+i] = elitePopulation[i]    
 
-    np.append(mutationPopulation, elitePopulation)
-    # mutationPopulation.extend(elitePopulation)
-    print(mutationPopulation.shape)
     return mutationPopulation
 
 def saveHighestScorePolicy(population, generation, scores):
     if (generation % 10 == 0):
         index = np.argmax(scores)
-        filename='/SavedScores/generation'+str(generation)+'HS'+str(scores[index])+'.npy'
-        np.save(filename,population[index])
+        filename='generation'+str(generation)+'HS'+str(scores[index])+'.npy'
+        np.save(os.path.join('SavedScores', filename) ,population[index])
         print("Saved generation to file "+filename)
 
 def loadPolicy(filename, population, index):
@@ -223,6 +271,9 @@ def measureTime():
     diff=currentTime-lasttime
     lasttime=currentTime
     return diff
+
+# test_selection()
+# quit()
 
 env.reset()
 population = initPopulation()
