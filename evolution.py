@@ -35,7 +35,7 @@ FINAL_DIMENSION_Y = int(((INPUT_SHAPE[1] - 2*int(FILTER_SIZE_1[0]/2))/2 - 2*int(
 
 env = gym.make('SpaceInvaders-v0')
 keepTraining = True
-slack_logs = np.zeros((5,1))
+slack_logs = np.zeros((6,1))
 
 def visualize(featureVector):
     regularImage = featureVector[0,:FRAME_SIZE].reshape((210,160))
@@ -54,7 +54,8 @@ def writeCsv(index, data):
     # [2] Current Score
     # [3] Games Played
     # [4] Start Time
-    #
+    # [5] All Time High Score
+
     with open("logs.csv", "w", newline='') as csv_file:
         writer = csv.writer(csv_file, delimiter=',')
         writer.writerows(slack_logs)
@@ -281,15 +282,19 @@ population = initPopulation()
 dnnmodel = buildModel()
 generation = 0
 lasttime = time.time()
+all_time_high_score = 0
 
 writeCsv(4, time.time())
 
 while (keepTraining):
     scores = evaluate(dnnmodel, population, generation*POPULATION_SIZE)
-    print(int(measureTime())," sec Generation: ", generation, " Highest Score: ", np.max(scores), " Games Played: ", generation*POPULATION_SIZE)
+    print(int(measureTime())," sec Generation: ", generation, " Highest Score: ", np.max(scores), " Games Played: ", generation*POPULATION_SIZE+POPULATION_SIZE)
 
     writeCsv(0, generation)
     writeCsv(1, np.max(scores))
+    if (np.max(scores) > all_time_high_score):
+        all_time_high_score = np.max(scores)
+        writeCsv(5, all_time_high_score)
 
     saveHighestScorePolicy(population, generation, scores)
     population = generateNewGeneration(scores, population)

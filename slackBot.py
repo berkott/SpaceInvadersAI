@@ -9,7 +9,6 @@ import csv
 # export SLACK_BOT_TOKEN='your bot user access token here'
 # slack_client = SlackClient(os.environ.get('SLACK_BOT_TOKEN'))
 
-slack_client = SlackClient('ENTER')
 
 ai_bot_id = None
 
@@ -49,13 +48,14 @@ def handle_command(command, channel, slack_logs):
     # [2] Current Score
     # [3] Games Played
     # [4] Start Time
+    # [5] All Time High Score
 
     print(slack_logs)
     currentTime = time.time()
     timeSinceStart = getTime(currentTime - slack_logs[4])
 
     if command.startswith(COMMAND):
-        response = "Generation: " + str(slack_logs[0]) + " Highest Score: " + str(slack_logs[1]) + " Current Score: " + str(slack_logs[2]) + " Games Played: " + str(slack_logs[3]) + " Time Since Start: " + str(timeSinceStart)
+        response = "Generation: " + str(slack_logs[0]) + " Generation Highest Score: " + str(slack_logs[1]) + " All Time High Score: " + str(slack_logs[5]) + " Current Score: " + str(slack_logs[2]) + " Games Played: " + str(slack_logs[3]) + " Time Since Start: " + str(timeSinceStart)
 
     # Sends the response back to the channel
     slack_client.api_call(
