@@ -8,8 +8,7 @@ import numpy as np
 from datetime import datetime
 from matplotlib import pyplot as PLT
 import time
-import csv
-import os
+import h5py
 
 # Hyper parameters
 L1 = 20
@@ -158,7 +157,6 @@ def compute_advantages(scores):
     return scores
 
 def compute_rewards(scores, rewards, frames):
-    print(scores)
     all_discounted_rewards = []
     for i in range(PLAYING_BATCH):
         discounted_rewards = np.zeros((int(frames[i]),1))
@@ -180,7 +178,6 @@ def train_model(states, actions, advantages, predictions):
     stacked_predictions = np.vstack(predictions)
     stacked_actions = np.vstack(actions)
     
-    print("Predictions: ", stacked_predictions, ", Actions: ", stacked_actions)
     gradients = stacked_actions - stacked_predictions
     gradients *= advantages
 
@@ -189,27 +186,41 @@ def train_model(states, actions, advantages, predictions):
     
     model.train_on_batch(training_data, target_data)
 
-while True:
-    states = []
-    actions = []
-    rewards = []
-    predictions = []
-    scores = np.zeros(PLAYING_BATCH)
-    frames = np.zeros(PLAYING_BATCH)
-    
-    for i in range(PLAYING_BATCH):
-        if(TESTING == False):
-            state, action, reward, prediction, score, frame = play_game()
-        else:
-            state, action, reward, prediction, score, frame = fill_values()
-        states.append(state)
-        actions.append(action)
-        rewards.append(reward)
-        predictions.append(prediction)
-        scores[i] = score
-        frames[i] = frame
-    computed_scores = compute_advantages(scores)
-    advantages = compute_rewards(computed_scores, rewards, frames)
+def save_model():
+    model.save_weights('policy_gradients_weights.h5')
 
-    train_model(states, actions, advantages, predictions)
-    print(np.argmax(scores))
+def load_model():
+    model.load_weights('policy_gradients_weights.h5')
+
+def main():
+    while True:
+        states = []
+        actions = []
+        rewards = []
+        predictions = []
+        scores = np.zeros(PLAYING_BATCH)
+        frames = np.zeros(PLAYING_BATCH)
+        
+        for i in range(PLAYING_BATCH):
+            if(TESTING == False):
+                state, action, reward, prediction, score, frame = play_game()
+            else:
+                state, action, reward, prediction, score, frame = fill_values()
+            states.append(state)
+            actions.append(action)
+            rewards.append(reward)
+            predictions.append(prediction)
+            scores[i] = score
+            frames[i] = frame
+        computed_scores = compute_advantages(scores)
+        advantages = compute_rewards(computed_scores, rewards, frames)
+
+        train_model(states, actions, advantages, predictions)
+        
+        print(np.argmax(scores))
+        save_model()
+
+try:
+    load_model()
+except:
+    main()
