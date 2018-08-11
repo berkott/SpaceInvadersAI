@@ -8,25 +8,32 @@ import numpy as np
 from datetime import datetime
 from matplotlib import pyplot as PLT
 import time
+import csv
 import h5py
 
 # Hyper parameters
-L1 = 20
-L2 = 10
-L3 = 50
+L1 = 8
+L2 = 4
+L3 = 30
 L4 = 4
 LEARNING_RATE = 0.001
 DISCOUNT_RATE = 0.99
-REWARD_RATE = 1.5
-PLAYING_BATCH = 3
+REWARD_RATE = 1.3
+PLAYING_BATCH = 4
 FILTER_SIZE_1 = (3,3)
 FILTER_SIZE_2 = (5,5)
 POOLING_SIZE = (2,2)
 
-WIDTH=210
-HEIGHT=160
-FRAME_SIZE = 210*160*1
-INPUT_SHAPE = (210, 160, 2)
+#WIDTH=210
+#HEIGHT=160
+#FRAME_SIZE = 210*160*1
+#INPUT_SHAPE = (210, 160, 2)
+
+WIDTH=80
+HEIGHT=80
+FRAME_SIZE = 80*80*1
+INPUT_SHAPE = (80, 80, 2)
+
 INPUT_DIM = 2*FRAME_SIZE
 
 # Skips game play and generates random values
@@ -46,6 +53,22 @@ model.compile(loss='mean_squared_error', optimizer=adam)
 
 env = gym.make('SpaceInvaders-v0')
 highest_score = 0
+
+slack_logs = np.zeros((6,1))
+
+
+def write_csv(index, data):
+    slack_logs[index] = data
+
+    # For slack_logs:
+    # [0] Scores
+    # [1] All Time HS
+    # [2] Start Time
+    # [3] Games Played
+
+    with open("logs.csv", "w", newline='') as csv_file:
+        writer = csv.writer(csv_file, delimiter=',')
+        writer.writerows(slack_logs)
 
 def convert_prediction_to_action(prediction, game_type_action):
     # Training
@@ -102,7 +125,10 @@ def play_game():
         frames += 1
         env.render()
         observation, reward, done, _ = env.step(action)
-        frame = observation[:,:,0]
+        frame = observation
+        #[:,:,0]
+        frame = frame[35:195]
+        frame = frame[::2, ::2, 0]
         frame = np.where(frame > 0, 1.0,0)
         difference = frame-previous_frame
         state[:,:,0]=frame
@@ -193,6 +219,8 @@ def load_model():
     model.load_weights('policy_gradients_weights.h5')
 
 def main():
+    write_csv(2, time.time())
+    games_played = 0
     while True:
         states = []
         actions = []
@@ -200,6 +228,7 @@ def main():
         predictions = []
         scores = np.zeros(PLAYING_BATCH)
         frames = np.zeros(PLAYING_BATCH)
+        all_time_high_score = 0
         
         for i in range(PLAYING_BATCH):
             if(TESTING == False):
@@ -212,15 +241,23 @@ def main():
             predictions.append(prediction)
             scores[i] = score
             frames[i] = frame
+            games_played += 1
+            write_csv(3, games_played)
+        print("Scores: ", scores)
+        write_csv(0, np.max(scores))
+        if(np.max(scores) > all_time_high_score):
+            all_time_high_score = np.max(scores)
+            write_csv(1, all_time_high_score)
+
         computed_scores = compute_advantages(scores)
         advantages = compute_rewards(computed_scores, rewards, frames)
 
         train_model(states, actions, advantages, predictions)
         
-        print(np.argmax(scores))
         save_model()
 
 try:
     load_model()
+    main()
 except:
     main()

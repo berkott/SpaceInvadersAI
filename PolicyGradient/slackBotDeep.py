@@ -15,7 +15,7 @@ ai_bot_id = None
 
 # constants
 RTM_READ_DELAY = 1
-COMMAND = "Log"
+COMMAND = "Log ai"
 
 def getCsvData():
     data = []
@@ -43,20 +43,18 @@ def handle_command(command, channel, slack_logs):
 
     # This is where you start to implement more commands!
 
-    # For logs:
-    # [0] Generation
-    # [1] Highest Score
-    # [2] Current Score
+    # For slack_logs:
+    # [0] Scores
+    # [1] All Time HS
+    # [2] Start Time
     # [3] Games Played
-    # [4] Start Time
-    # [5] All Time High Score
-
+    
     print(slack_logs)
     currentTime = time.time()
-    timeSinceStart = getTime(currentTime - slack_logs[4])
+    timeSinceStart = getTime(currentTime - slack_logs[2])
 
     if command.startswith(COMMAND):
-        response = "Generation: " + str(slack_logs[0]) + " Generation Highest Score: " + str(slack_logs[1]) + " All Time High Score: " + str(slack_logs[5]) + " Current Score: " + str(slack_logs[2]) + " Games Played: " + str(slack_logs[3]) + " Time Since Start: " + str(timeSinceStart)
+        response = "Current Batch High Score: " + str(slack_logs[0]) + " All Time High Score: " + str(slack_logs[1]) + " Games Played: " + str(slack_logs[3]) + " Time Since Start: " + str(timeSinceStart)
 
     # Sends the response back to the channel
     slack_client.api_call(
