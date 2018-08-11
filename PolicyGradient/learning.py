@@ -245,7 +245,7 @@ def main():
             write_csv(3, games_played)
         print("Scores: ", scores)
         write_csv(0, np.max(scores))
-        if(np.max(scores) > all_time_high_score):
+        if(np.max(scores) < all_time_high_score):
             all_time_high_score = np.max(scores)
             write_csv(1, all_time_high_score)
 
