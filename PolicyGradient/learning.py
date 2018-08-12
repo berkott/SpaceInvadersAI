@@ -12,14 +12,14 @@ import csv
 import h5py
 
 # Hyper parameters
-L1 = 8
-L2 = 4
-L3 = 30
+L1 = 10
+L2 = 5
+L3 = 50
 L4 = 4
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.002
 DISCOUNT_RATE = 0.99
-REWARD_RATE = 1.3
-PLAYING_BATCH = 4
+REWARD_RATE = 1.5
+PLAYING_BATCH = 5
 FILTER_SIZE_1 = (3,3)
 FILTER_SIZE_2 = (5,5)
 POOLING_SIZE = (2,2)
@@ -29,10 +29,10 @@ POOLING_SIZE = (2,2)
 #FRAME_SIZE = 210*160*1
 #INPUT_SHAPE = (210, 160, 2)
 
-WIDTH=80
+WIDTH=85
 HEIGHT=80
-FRAME_SIZE = 80*80*1
-INPUT_SHAPE = (80, 80, 2)
+FRAME_SIZE = 85*80*1
+INPUT_SHAPE = (85, 80, 2)
 
 INPUT_DIM = 2*FRAME_SIZE
 
@@ -105,6 +105,12 @@ def convert_prediction_to_action(prediction, game_type_action):
             return [0,0,0,1]
     return 0
 
+def visualize(frame, difference_image):
+    PLT.imshow(frame)
+    PLT.show()
+    PLT.imshow(difference_image)
+    PLT.show()
+
 def play_game():
     env.reset()
     
@@ -127,13 +133,15 @@ def play_game():
         observation, reward, done, _ = env.step(action)
         frame = observation
         #[:,:,0]
-        frame = frame[35:195]
+        frame = frame[25:195]
         frame = frame[::2, ::2, 0]
         frame = np.where(frame > 0, 1.0,0)
         difference = frame-previous_frame
         state[:,:,0]=frame
         state[:,:,1]=difference
         states.append(np.copy(state))
+
+        # visualize(frame, difference)
         
         forPrediction[0]=state
         prediction = model.predict(forPrediction).flatten()
@@ -221,6 +229,7 @@ def load_model():
 def main():
     write_csv(2, time.time())
     games_played = 0
+    all_time_high_score = 0
     while True:
         states = []
         actions = []
@@ -228,7 +237,6 @@ def main():
         predictions = []
         scores = np.zeros(PLAYING_BATCH)
         frames = np.zeros(PLAYING_BATCH)
-        all_time_high_score = 0
         
         for i in range(PLAYING_BATCH):
             if(TESTING == False):
@@ -245,7 +253,7 @@ def main():
             write_csv(3, games_played)
         print("Scores: ", scores)
         write_csv(0, np.max(scores))
-        if(np.max(scores) < all_time_high_score):
+        if(np.max(scores) > all_time_high_score):
             all_time_high_score = np.max(scores)
             write_csv(1, all_time_high_score)
 
