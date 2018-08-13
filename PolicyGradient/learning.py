@@ -3,26 +3,35 @@ import keras
 from keras import backend as K
 from keras.models import Sequential
 from keras.layers import Conv2D, Activation, MaxPooling2D, Flatten, Dense, Dropout
-from keras.optimizers import Adam
+from keras.optimizers import Adam, RMSprop
 import numpy as np
 from datetime import datetime
 from matplotlib import pyplot as PLT
 import time
 import csv
 import h5py
+import math
 
 # Hyper parameters
-L1 = 10
-L2 = 5
-L3 = 50
-L4 = 4
+# L1 = 8
+# L2 = 4
+# L3 = 200
+# L4 = 100
+# L5 = 4
+L1 = 8
+L2 = 4
+L3 = 2
+L4 = 1
+L5 = 4
 LEARNING_RATE = 0.002
-DISCOUNT_RATE = 0.99
-REWARD_RATE = 1.5
+# DISCOUNT_RATE = 0.99
+# REWARD_RATE = 1.5
 PLAYING_BATCH = 5
 FILTER_SIZE_1 = (3,3)
 FILTER_SIZE_2 = (5,5)
 POOLING_SIZE = (2,2)
+DIFF_IMG_FRAMES_GAP = 7
+EPOCHS_PER_EPISODE = 1
 
 #WIDTH=210
 #HEIGHT=160
@@ -46,16 +55,17 @@ model.add(Conv2D(L2, FILTER_SIZE_2, activation='relu', kernel_initializer='norma
 model.add(MaxPooling2D(pool_size=POOLING_SIZE))
 # model.add(Dropout(0.25))
 model.add(Flatten())
+
 model.add(Dense(L3, activation = 'relu', kernel_initializer='normal'))
-model.add(Dense(L4, activation ='softmax', kernel_initializer='normal'))
-adam = Adam(lr=LEARNING_RATE)
-model.compile(loss='mean_squared_error', optimizer=adam)
+model.add(Dense(L4, activation = 'relu', kernel_initializer='normal'))
+model.add(Dense(L5, activation ='softmax', kernel_initializer='normal'))
+# adam = Adam(lr=LEARNING_RATE)
+rmsprop = RMSprop(lr=LEARNING_RATE)
+model.compile(loss='mean_squared_error', optimizer=rmsprop)
 
 env = gym.make('SpaceInvaders-v0')
-highest_score = 0
 
-slack_logs = np.zeros((6,1))
-
+slack_logs = np.zeros((4,1))
 
 def write_csv(index, data):
     slack_logs[index] = data
@@ -76,6 +86,7 @@ def convert_prediction_to_action(prediction, game_type_action):
         index = np.random.choice(4, p=prediction)
     else:
         index = np.argmax(prediction[0])
+
     # Testing
     # index = np.argmax(prediction[0])
 
@@ -124,24 +135,29 @@ def play_game():
     frames = 0
     
     frame = np.zeros((WIDTH,HEIGHT))
-    previous_frame = np.zeros((WIDTH,HEIGHT))
+    previous_frame = np.zeros((DIFF_IMG_FRAMES_GAP, WIDTH, HEIGHT))
     forPrediction=np.zeros((1,WIDTH,HEIGHT,2))
     state=np.zeros((WIDTH,HEIGHT,2))
     while not done:
         frames += 1
+        if(frames > DIFF_IMG_FRAMES_GAP-1):
+            index = frames%DIFF_IMG_FRAMES_GAP
+        else:
+            index = 0
         env.render()
         observation, reward, done, _ = env.step(action)
         frame = observation
-        #[:,:,0]
         frame = frame[25:195]
         frame = frame[::2, ::2, 0]
         frame = np.where(frame > 0, 1.0,0)
-        difference = frame-previous_frame
+
+        difference = frame-previous_frame[index]
         state[:,:,0]=frame
         state[:,:,1]=difference
         states.append(np.copy(state))
 
-        # visualize(frame, difference)
+        # if(frames > 100):
+        #     visualize(frame, difference)
         
         forPrediction[0]=state
         prediction = model.predict(forPrediction).flatten()
@@ -151,7 +167,7 @@ def play_game():
         rewards.append(reward)
         actions.append(np.array(convert_prediction_to_action(prediction, False)))
 
-        previous_frame = np.copy(frame)
+        previous_frame[index] = np.copy(frame)
     return states, actions, rewards, predictions, score, frames
 
 def fill_values():
@@ -184,28 +200,34 @@ def fill_values():
 
     return states, actions, rewards, predictions, score, frames
 
+def sigmoid(x):
+    return 2 * (1 / (1 + math.exp(-x))) - 1
+
 def compute_advantages(scores):
     scores -= np.mean(scores)
     if (np.std(scores) != 0):
         scores /= np.std(scores)
+    for i in range(PLAYING_BATCH):
+        scores[i] = sigmoid(scores[i])
     return scores
 
 def compute_rewards(scores, rewards, frames):
     all_discounted_rewards = []
     for i in range(PLAYING_BATCH):
         discounted_rewards = np.zeros((int(frames[i]),1))
-        for j in reversed(range(int(frames[i]))):
-            discounted_rewards[j] = scores[i]
-            scores[i] = scores[i] * DISCOUNT_RATE
-            if(rewards[i][j] > 1):
-                scores[i] = scores[i] * REWARD_RATE
+        discounted_rewards.fill(scores[i])
+        # for j in reversed(range(int(frames[i]))):
+        #     discounted_rewards[j] = scores[i]
+        #     scores[i] = scores[i] * DISCOUNT_RATE
+        #     if(rewards[i][j] > 1):
+        #         scores[i] = scores[i] * REWARD_RATE
         # discounted_rewards = np.fliplr([discounted_rewards])[0]
         # if (np.std(discounted_rewards) != 0):
         #     discounted_rewards /= np.std(discounted_rewards)
         all_discounted_rewards.append(discounted_rewards)
     stacked_rewards = np.vstack(all_discounted_rewards)
-    if (np.std(stacked_rewards) != 0):
-        stacked_rewards = stacked_rewards / np.std(stacked_rewards - np.mean(stacked_rewards))
+    # if (np.std(stacked_rewards) != 0):
+    #     stacked_rewards = stacked_rewards / np.std(stacked_rewards - np.mean(stacked_rewards))
     return stacked_rewards
 
 def train_model(states, actions, advantages, predictions):
@@ -218,7 +240,8 @@ def train_model(states, actions, advantages, predictions):
     training_data = np.vstack(states)
     target_data = stacked_predictions + LEARNING_RATE * gradients
     
-    model.train_on_batch(training_data, target_data)
+    for _ in range(EPOCHS_PER_EPISODE):
+        model.train_on_batch(training_data, target_data)
 
 def save_model():
     model.save_weights('policy_gradients_weights.h5')
@@ -253,6 +276,7 @@ def main():
             write_csv(3, games_played)
         print("Scores: ", scores)
         write_csv(0, np.max(scores))
+
         if(np.max(scores) > all_time_high_score):
             all_time_high_score = np.max(scores)
             write_csv(1, all_time_high_score)
