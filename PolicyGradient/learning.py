@@ -23,7 +23,7 @@ L2 = 4
 L3 = 2
 L4 = 1
 L5 = 4
-LEARNING_RATE = 0.002
+LEARNING_RATE = 0.001
 # DISCOUNT_RATE = 0.99
 # REWARD_RATE = 1.5
 PLAYING_BATCH = 5
@@ -31,7 +31,7 @@ FILTER_SIZE_1 = (3,3)
 FILTER_SIZE_2 = (5,5)
 POOLING_SIZE = (2,2)
 DIFF_IMG_FRAMES_GAP = 7
-EPOCHS_PER_EPISODE = 1
+EPOCHS_PER_EPISODE = 3
 
 #WIDTH=210
 #HEIGHT=160
@@ -59,9 +59,9 @@ model.add(Flatten())
 model.add(Dense(L3, activation = 'relu', kernel_initializer='normal'))
 model.add(Dense(L4, activation = 'relu', kernel_initializer='normal'))
 model.add(Dense(L5, activation ='softmax', kernel_initializer='normal'))
-# adam = Adam(lr=LEARNING_RATE)
-rmsprop = RMSprop(lr=LEARNING_RATE)
-model.compile(loss='mean_squared_error', optimizer=rmsprop)
+adam = Adam(lr=LEARNING_RATE)
+# rmsprop = RMSprop(lr=LEARNING_RATE)
+model.compile(loss='mean_squared_error', optimizer=adam)
 
 env = gym.make('SpaceInvaders-v0')
 
@@ -203,19 +203,25 @@ def fill_values():
 def sigmoid(x):
     return 2 * (1 / (1 + math.exp(-x))) - 1
 
-def compute_advantages(scores):
+def compute_advantages(scores, frames):
     scores -= np.mean(scores)
     if (np.std(scores) != 0):
         scores /= np.std(scores)
     for i in range(PLAYING_BATCH):
         scores[i] = sigmoid(scores[i])
-    return scores
+    
+    frames -= np.mean(frames)
+    if (np.std(frames) != 0):
+        scores /= np.std(scores)
+    for i in range(PLAYING_BATCH):
+        frames[i] = sigmoid(frames[i])
+    return scores, frames
 
-def compute_rewards(scores, rewards, frames):
+def compute_rewards(scores, rewards, frames, computed_frames):
     all_discounted_rewards = []
     for i in range(PLAYING_BATCH):
         discounted_rewards = np.zeros((int(frames[i]),1))
-        discounted_rewards.fill(scores[i])
+        discounted_rewards.fill(scores[i] + computed_frames[i])
         # for j in reversed(range(int(frames[i]))):
         #     discounted_rewards[j] = scores[i]
         #     scores[i] = scores[i] * DISCOUNT_RATE
@@ -281,8 +287,9 @@ def main():
             all_time_high_score = np.max(scores)
             write_csv(1, all_time_high_score)
 
-        computed_scores = compute_advantages(scores)
-        advantages = compute_rewards(computed_scores, rewards, frames)
+        computed_frames = np.copy(frames)
+        computed_scores, computed_frames = compute_advantages(scores, computed_frames)
+        advantages = compute_rewards(computed_scores, rewards, frames, computed_frames)
 
         train_model(states, actions, advantages, predictions)
         
