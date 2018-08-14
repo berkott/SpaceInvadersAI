@@ -13,16 +13,16 @@ import h5py
 import math
 
 # Hyper parameters
-# L1 = 8
-# L2 = 4
-# L3 = 200
-# L4 = 100
-# L5 = 4
 L1 = 8
 L2 = 4
-L3 = 2
-L4 = 1
+L3 = 200
+L4 = 100
 L5 = 4
+# L1 = 8
+# L2 = 4
+# L3 = 2
+# L4 = 1
+# L5 = 4
 LEARNING_RATE = 0.001
 # DISCOUNT_RATE = 0.99
 # REWARD_RATE = 1.5
