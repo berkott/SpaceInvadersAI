@@ -212,7 +212,7 @@ def compute_advantages(scores, frames):
     
     frames -= np.mean(frames)
     if (np.std(frames) != 0):
-        scores /= np.std(scores)
+        frames /= np.std(frames)
     for i in range(PLAYING_BATCH):
         frames[i] = sigmoid(frames[i])
     return scores, frames
