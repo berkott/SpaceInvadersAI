@@ -3,15 +3,11 @@ import keras
 from keras import backend as K
 from keras.models import Sequential
 from keras.layers import Conv2D, Activation, MaxPooling2D, Flatten, Dense, Dropout
-from keras.optimizers import Adam, RMSprop
+from keras.optimizers import Adam
 import numpy as np
-import pandas as pd
-from datetime import datetime
-from matplotlib import pyplot as PLT
 import time
-import csv
-import h5py
 import math
+import ai_utils
 
 # Hyper parameters
 L1 = 200
@@ -40,23 +36,6 @@ def createModel():
     model.compile(loss='mean_squared_error', optimizer=adam)
     return model
 
-def write_csv(index, data):
-    slack_logs[index] = data
-
-    # For slack_logs:
-    # [0] Scores
-    # [1] All Time HS
-    # [2] Start Time
-    # [3] Games Played
-
-    with open("logs.csv", "w", newline='') as csv_file:
-        writer = csv.writer(csv_file, delimiter=',')
-        writer.writerows(slack_logs)
-
-def write_scores(data):
-    df = pd.DataFrame(data)
-    df.to_csv('scores.csv')
-
 def convert_prediction_to_action(prediction):
     print(prediction.shape)
     randomNumber = np.random.random()
@@ -65,12 +44,6 @@ def convert_prediction_to_action(prediction):
         action = 3 
     print("Prediction ",prediction,prediction[0,0],randomNumber,action)
     return action
-
-def visualize(frame, difference_image):
-    PLT.imshow(frame)
-    PLT.show()
-    PLT.imshow(difference_image)
-    PLT.show()
 
 def play_game():
     env.reset()
@@ -181,12 +154,6 @@ def train_model(states, actions, advantages, predictions):
     
     for _ in range(EPOCHS_PER_EPISODE):
         model.train_on_batch(training_data, target_data)
-
-def save_model():
-    model.save_weights('policy_gradients_weights.h5')
-
-def load_model():
-    model.load_weights('policy_gradients_weights.h5')
 
 def main():
     write_csv(2, time.time())
