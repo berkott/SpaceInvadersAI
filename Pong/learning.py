@@ -14,46 +14,31 @@ import h5py
 import math
 
 # Hyper parameters
-L1 = 8
-L2 = 4
-L3 = 200
-L4 = 100
+L1 = 200
+L2 = 100
 
 LEARNING_RATE = 0.001
 DISCOUNT_RATE = 0.99
-PLAYING_BATCH = 5
-FILTER_SIZE_1 = (3,3)
-FILTER_SIZE_2 = (5,5)
-POOLING_SIZE = (2,2)
+PLAYING_BATCH = 1
 DIFF_IMG_FRAMES_GAP = 7
-EPOCHS_PER_EPISODE = 3
+EPOCHS_PER_EPISODE = 5
+SHOW_GAME = False
 
 WIDTH=80
 HEIGHT=80
-FRAME_SIZE = 80*80*1
-INPUT_SHAPE = (80, 80, 2)
-
-INPUT_DIM = 2*FRAME_SIZE
+INPUT_DIM=WIDTH*HEIGHT
 
 # Skips game play and generates random values
 TESTING = False
 
-model = Sequential()
-# model.add(Conv2D(L1, FILTER_SIZE_1, activation='relu', input_shape = INPUT_SHAPE, kernel_initializer='normal'))
-# model.add(MaxPooling2D(pool_size=POOLING_SIZE))
-# model.add(Conv2D(L2, FILTER_SIZE_2, activation='relu', kernel_initializer='normal'))
-# model.add(MaxPooling2D(pool_size=POOLING_SIZE))
-# model.add(Flatten())
-
-model.add(Dense(L3, activation = 'relu', input_shape = INPUT_SHAPE))
-model.add(Dense(L4, activation = 'relu'))
-model.add(Dense(1, activation ='sigmoid'))
-adam = Adam(lr=LEARNING_RATE)
-model.compile(loss='mean_squared_error', optimizer=adam)
-
-env = gym.make('Pong-v0')
-
-slack_logs = np.zeros((4,1))
+def createModel():
+    model = Sequential()
+    model.add(Dense(L1, activation = 'relu', input_dim = INPUT_DIM))
+    model.add(Dense(L2, activation = 'relu'))
+    model.add(Dense(1, activation ='sigmoid'))
+    adam = Adam(lr=LEARNING_RATE)
+    model.compile(loss='mean_squared_error', optimizer=adam)
+    return model
 
 def write_csv(index, data):
     slack_logs[index] = data
@@ -72,20 +57,14 @@ def write_scores(data):
     df = pd.DataFrame(data)
     df.to_csv('scores.csv')
 
-def convert_prediction_to_action(prediction, game_type_action):
-    print(prediction)
-    print(game_type_action)
-    if(prediction[0] <= .5):
-        # if(game_type_action):
-        return 1
-        # else:
-            # return [1,0]
-    else:
-        # if(game_type_action):
-        return 2
-        # else:
-            # return [0,1]
-    return 0
+def convert_prediction_to_action(prediction):
+    print(prediction.shape)
+    randomNumber = np.random.random()
+    action = 2
+    if(randomNumber > prediction[0,0]):
+        action = 3 
+    print("Prediction ",prediction,prediction[0,0],randomNumber,action)
+    return action
 
 def visualize(frame, difference_image):
     PLT.imshow(frame)
@@ -106,39 +85,38 @@ def play_game():
     frames = 0
     
     frame = np.zeros((WIDTH,HEIGHT))
-    previous_frame = np.zeros((DIFF_IMG_FRAMES_GAP, WIDTH, HEIGHT))
-    forPrediction=np.zeros((1,WIDTH,HEIGHT,2))
-    state=np.zeros((WIDTH,HEIGHT,2))
+    previous_frame = np.zeros((WIDTH, HEIGHT))
+    forPrediction=np.zeros((1,WIDTH*HEIGHT))
+    state=np.zeros((WIDTH*HEIGHT,1))
     while not done:
         frames += 1
-        if(frames > DIFF_IMG_FRAMES_GAP-1):
-            index = frames%DIFF_IMG_FRAMES_GAP
-        else:
-            index = 0
-        env.render()
+        if(SHOW_GAME):
+            env.render()
         observation, reward, done, _ = env.step(action)
         frame = observation
         frame = frame[35:195]
         frame = frame[::2, ::2, 0]
-        frame = np.where(frame > 0, 1.0,0)
+        # frame = np.where(frame > 0, 1.0,0)
 
-        difference = frame-previous_frame[index]
-        state[:,:,0]=frame
-        state[:,:,1]=difference
-        states.append(np.copy(state))
-
-        # if(frames > 100):
+        difference = frame-previous_frame
+        state = difference.flatten()
+        
+        # if(frames > 20):
         #     visualize(frame, difference)
         
         forPrediction[0]=state
         prediction = model.predict(forPrediction)
+        action = convert_prediction_to_action(prediction)
+
         predictions.append(prediction)
-        action = convert_prediction_to_action(prediction, True)
         score+=reward
         rewards.append(reward)
-        actions.append(np.array(convert_prediction_to_action(prediction, False)))
-
-        previous_frame[index] = np.copy(frame)
+        states.append(np.copy(state))
+        actions.append(action-1)
+        previous_frame = np.copy(frame)
+        if(reward > 0):
+            if(SHOW_GAME):
+                done = True
     return states, actions, rewards, predictions, score, frames
 
 def fill_values():
@@ -251,6 +229,13 @@ def main():
         train_model(states, actions, advantages, predictions)
         
         save_model()
+
+# 
+# START the computations
+# 
+env = gym.make('Pong-v0')
+slack_logs = np.zeros((4,1))
+model = createModel()
 
 try:
     load_model()
