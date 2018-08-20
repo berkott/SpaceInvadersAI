@@ -7,7 +7,8 @@ from keras.optimizers import Adam
 import numpy as np
 import time
 import math
-import ai_utils
+from ai_utils import *
+# import ai_utils
 
 # Hyper parameters
 L1 = 200
